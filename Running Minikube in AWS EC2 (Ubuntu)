@@ -1,0 +1,131 @@
+Running Minikube in AWS EC2 (Ubuntu)
+If you are studying Kubernetes and having a hard time running Minikube on an EC2 Instance, you are not alone. 
+I had a hard time doing it when it was my first time.
+
+Below are the steps (and some comments) that I took to help me run Minikube on my EC2 Instance.
+
+Installation of Minikube on EC2 Ubuntu
+
+1. Run a public EC2 Server with the following setup
+AMI	Ubuntu Server 18.04 LTS (HVM), SSD Volume Type
+Instance Type	t3.micro (2 vCPU, 1GB Memory)
+Storage	8 GB (gp2)
+Tags	– Key: Name
+– Value: Minikube
+Security Group	Name: Minikube Security Group
+– SSH, 0.0.0.0/0
+Later we will be editing this.
+Key Pair	Create your own keypair.
+You will need this to SSH to your EC2 Instance
+Update: I changed the Instance Type from t2.micro (1 vCPU) to t3.micro (2 vCPU). An update to Minikube required a minimum of 2 vCPUs. The error when running with t2.micro was Requested cpu count 1 is less than the minimum allowed of 2.
+
+t3.micro is no longer in the Free Tier, make sure to stop or terminate the instance after you are done testing to avoid a huge AWS bill.
+
+Thank you to everyone in the comments section who pointed this change.
+
+2. SSH into your created EC2 Instance using your keypair.
+ssh ubuntu@<ipv4_public_ip> -i <keypair>.pem
+
+3. Install kubectl
+curl -LO https://storage.googleapis.com/kubernetes-release/release/`curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt`/bin/linux/amd64/kubectl
+chmod +x ./kubectl
+sudo mv ./kubectl /usr/local/bin/kubectl
+
+4. Install Docker
+sudo apt-get update && \
+    sudo apt-get install docker.io -y
+Minikube requires Docker.
+
+
+5. Install Minikube
+curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64 && chmod +x minikube && sudo mv minikube /usr/local/bin/
+6. Check Minikube Version
+minikube version
+We have now successfully installed Minikube!
+
+Let’s test it!
+
+Running Minikube on EC2 Ubuntu
+Become a root user.
+
+sudo -i
+If you are not comfortable running commands as root, you must always add sudo before the commands minikube and kubectl.
+
+2. Start Minikube
+minikube start --vm-driver=none
+
+
+Do not worry about the warning. As long as you see the message ‘Kubectl is now configured to use the cluster.’ you have successfully ran Minikube.
+
+Note: In the Install Minikube documentation from Kubernetes.io it says that you need to enable virtualization by accessing the computer’s BIOS. For EC2 Instances we do not have access to the BIOS since AWS EC2 instance is a Virtual Machine. Thus we are using the --vm-driver=none tag. No need to install a Hypervisor (VirtualBox or KVM)
+
+3. Check the status of Minikube
+minikube status
+
+
+If you see the status as ‘running’ then we can now run kubectl commands.
+
+4. Let us run our first container
+kubectl run hello-minikube --image=gcr.io/google_containers/echoserver:1.4 --port=8080
+
+
+5. Expose the container ports so that we can access it.
+kubectl expose deployment hello-minikube --type=NodePort
+
+
+6. Find where port 8080 in container exposed in EC2 Instance port.
+kubectl get services
+
+
+Note: Port <#### 31169 for me>is the EC2 Instance Port where the Port 8080 of the container is exposed.check port number from step 6.
+
+The EC2 Instance Port changes each time you expose a port, you may have been given a different value than what I have.
+
+kubectl get services command shows the list of services and their exposed ports.
+
+Let us check by accessing this via a web browser on our local computer. But first we need to edit our EC2 Security Group.
+
+7. Edit Security Group of the EC2 Instance to be access
+The goal is for us to be able to access the EC2 Instance Port (31169 for me) via the internet.
+
+EC2 >> (Network & Security) Security Groups >> Minikube Security Group >> Ingress
+
+Press Edit. Then Add Rule.
+
+Add the following.
+
+Type	Custom TCP Rule
+Protocol	TCP
+Port Range	31169 (the port given to you by the kubectl get services command)
+Source	Custom
+0.0.0.0/0 (Accessible via the internet)
+Click Save.
+
+
+
+8. Access the our container via the EC2 Instance Port on a web browser.
+The address is <ipv4_public_ip>:<ec2_port>.
+
+
+
+My EC2 Instance has an IPv4 Public IP of 13.250.43.8. And since my hello-minikube port 8080 is exposed on port 31169, the address that I placed on my browser is 13.250.43.8:30263.
+
+See the request_uri of the page displayed by the web browser, it says that I am accessing via port 8080.
+
+I accessed my container deployment using Chrome on my laptop. You can use any web browser you like (Safari, Internet Explorer, Edge, Firefox, etc.)
+
+Now that we know that we can access our container, let us finish this and clean up.
+
+9. Delete the exposed service (port)
+kubectl delete services hello-minikube
+
+
+10. Delete the deployed container (hello-minikube)
+kubectl delete deployment hello-minikube
+
+
+Stopping Minikube/Shutting Down the Cluster
+minikube stop
+I hope the above helps when you want to use Minikube on EC2 Ubuntu.
+
+If there are errors, comments, suggestions, or clarifications you can comment them below.
